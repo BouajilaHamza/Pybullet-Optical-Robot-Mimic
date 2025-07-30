@@ -1,10 +1,9 @@
 import cv2
 import time
-import numpy as np
 
-from vision_module import capture_and_preprocess_frame, estimate_pose, draw_landmarks
-from control_module import JointTrajectoryGenerator, JOINT_LIMITS
-from simulation_module import PyBulletSimulation
+from modules.vision_module import capture_and_preprocess_frame, estimate_pose, draw_landmarks
+from modules.control_module import JointTrajectoryGenerator, JOINT_LIMITS
+from modules.simulation_module import PyBulletSimulation
 
 def main():
     # Initialize modules

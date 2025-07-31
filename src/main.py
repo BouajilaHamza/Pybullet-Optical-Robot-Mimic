@@ -1,9 +1,10 @@
 import cv2
 import time
 import pybullet as pb
-from modules.vision_module import  estimate_pose, draw_landmarks
+from modules.vision_module import estimate_pose, draw_landmarks
 from modules.control_module import JointTrajectoryGenerator
 from modules.simulation_module import PyBulletSimulation
+from modules.visualization import init_visualizer, update_visualizer, close_visualizer
 import logging
 import sys
 
@@ -16,14 +17,17 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 def main():
+    # Initialize the visualizer
+    init_visualizer()
+    
     sim = PyBulletSimulation(gui=True)
     generator = JointTrajectoryGenerator(smoothing_window_size=5, feedback_gain=0.1)
 
 
     try:
         sim.load_table()
-        sim.load_robot("kuka_iiwa/model.urdf", start_pos=[-0.2, 0, 0.6])
-        sim.load_object(pos=[-0.7,0,0.8])
+        sim.load_robot("kuka_iiwa/model.urdf", start_pos=[-0.2, -0.3, 0.6])
+        sim.load_object(pos=[-0.3,0,0.8])
         sim.load_plate()
     except Exception as e:
         logger.error(f"Could not load kuka_iiwa/model.urdf: {e}")
@@ -51,7 +55,7 @@ def main():
                 logger.warning("Ignoring empty camera frame.")
                 continue
 
-            display_frame = cv2.resize(frame, (640, 480))
+            display_frame = cv2.resize(frame, (1024, 768))
             landmarks = estimate_pose(display_frame)
             logger.debug(f"landmarks {landmarks} \n {"-"*100}")
             if landmarks:
@@ -67,7 +71,15 @@ def main():
                 logger.debug(f"filtered smoothed commands {filtered_smoothed_commands} \n {"-"*100}")
                 final_commands = generator.adjust_commands_with_feedback(filtered_smoothed_commands, actual_joint_positions)
                 logger.debug(f"final commands {final_commands} \n {"-"*100}")
-
+                
+                # Update the visualizer with elbow joint data
+                if 'lbr_iiwa_joint_4' in final_commands and 'lbr_iiwa_joint_4' in actual_joint_positions:
+                    update_visualizer(
+                        target_angle=final_commands['lbr_iiwa_joint_4'],
+                        actual_angle=actual_joint_positions['lbr_iiwa_joint_4']
+                    )
+                
+                final_commands = {k:round(v,1) for k,v in final_commands.items()}
                 sim.set_joint_positions(final_commands)
                 draw_landmarks(display_frame, landmarks)
 
@@ -84,10 +96,9 @@ def main():
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        sim.disconnect()
+        close_visualizer()  # Close the visualizer when done
+        print("Teleoperation ended.")
         logger.info("Teleoperation ended.")
 
 if __name__ == '__main__':
     main()
-
-

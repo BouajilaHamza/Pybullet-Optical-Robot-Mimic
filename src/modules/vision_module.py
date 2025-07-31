@@ -1,8 +1,7 @@
 import cv2
 import mediapipe as mp
-import numpy as np
 
-# Initialize MediaPipe Pose
+
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     static_image_mode=False, # True for images, False for video streams
@@ -72,13 +71,13 @@ def draw_landmarks(image, landmarks):
         image,
         landmarks,
         mp_pose.POSE_CONNECTIONS,
-        landmark_drawing_spec=mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=2, circle_radius=2),
-        connection_drawing_spec=mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2)
+        landmark_drawing_spec=mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=1, circle_radius=1),
+        connection_drawing_spec=mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=1, circle_radius=1)
     )
 
 if __name__ == '__main__':
-    # Example usage with live camera feed
-    cap = cv2.VideoCapture(0) # Use 0 for default webcam
+
+    cap = cv2.VideoCapture(0) #0 for default webcam
     if not cap.isOpened():
         print("Error: Could not open camera.")
     else:
@@ -88,21 +87,17 @@ if __name__ == '__main__':
                 print("Ignoring empty camera frame.")
                 continue
 
-            # Preprocess the frame (resize only for display, MediaPipe handles internal resizing)
-            # For actual processing, MediaPipe expects raw image or specific input size.
-            # We'll use the raw frame for pose estimation and resize for display.
             display_frame = cv2.resize(frame, (640, 480))
+            display_frame = cv2.flip(display_frame, 1)
+            
+            landmarks = estimate_pose(display_frame)
 
-            # Estimate pose
-            landmarks = estimate_pose(display_frame) # Use display_frame for consistency
-
-            # Draw landmarks if detected
             if landmarks:
                 draw_landmarks(display_frame, landmarks)
 
             cv2.imshow('MediaPipe Pose', display_frame)
 
-            if cv2.waitKey(5) & 0xFF == 27: # Press 'ESC' to exit
+            if cv2.waitKey(5) & 0xFF == 27:
                 break
 
         cap.release()

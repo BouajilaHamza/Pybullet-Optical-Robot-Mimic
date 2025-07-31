@@ -1,6 +1,18 @@
 import pybullet as p
 import pybullet_data
 import time
+import logging
+import sys
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(logging.Formatter('%(levelname)s:%(message)s'))
+
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
 
 class PyBulletSimulation:
     def __init__(self, gui=True):
@@ -22,7 +34,7 @@ class PyBulletSimulation:
             start_orientation (list): Initial orientation as a quaternion [x, y, z, w].
         """
         self.robotId = p.loadURDF(urdf_path, start_pos, start_orientation, useFixedBase=False)
-        print(f"Loaded robot with ID: {self.robotId}")
+        logger.info(f"Loaded robot with ID: {self.robotId}")
 
         # Get joint info
         num_joints = p.getNumJoints(self.robotId)
@@ -33,7 +45,33 @@ class PyBulletSimulation:
             if joint_type == p.JOINT_REVOLUTE or joint_type == p.JOINT_PRISMATIC:
                 self.joint_names.append(joint_name)
                 self.joint_indices[joint_name] = i
-                print(f"  Joint {i}: {joint_name} (Type: {joint_type})")
+                logger.info(f"  Joint {i}: {joint_name} (Type: {joint_type})")
+
+    def load_table(self, start_pos=[0, 0, 0]):
+        table_urdf = "table/table.urdf"
+        try:
+            self.tableId = p.loadURDF(table_urdf, start_pos, useFixedBase=True)
+            logger.info(f"Loaded table with ID: {self.tableId}")
+        except Exception as e:
+            logger.error(f"Failed to load table: {e}")
+
+    def load_plate(self, urdf_path="tray/traybox.urdf", pos=[0.5, 0, 0.65], orientation=[0, 0, 0]):
+        try:
+            plateId = p.loadURDF(urdf_path, pos, p.getQuaternionFromEuler(orientation), useFixedBase=True)
+            logger.info(f"Loaded plate object with ID: {plateId}")
+            return plateId
+        except Exception as e:
+            logger.error(f"Failed to load plate: {e}")
+            return None
+
+    def load_object(self, obj_path="duck_vhacd.urdf", pos=[0.9, 0, 0.8], orientation=[0, 0, 0]):
+        try:
+            object_id = p.loadURDF(obj_path, pos, p.getQuaternionFromEuler(orientation), useFixedBase=False)
+            logger.info(f"Loaded object with ID: {object_id}")
+            return object_id
+        except Exception as e:
+            logger.error(f"Failed to load object: {e}")
+            return None
 
     def set_joint_positions(self, joint_commands, kp=0.5, kd=1.0):
         """
@@ -45,22 +83,23 @@ class PyBulletSimulation:
             kd (float): Derivative gain for the joint motors.
         """
         if self.robotId is None:
-            print("Error: No robot loaded.")
+            logger.error("Error: No robot loaded.")
             return
 
         for joint_name, target_angle in joint_commands.items():
             if joint_name in self.joint_indices:
+                logger.info(f"joint_name: {joint_name} target_angle: {target_angle}")
                 joint_index = self.joint_indices[joint_name]
                 p.setJointMotorControl2(
                     bodyUniqueId=self.robotId,
                     jointIndex=joint_index,
                     controlMode=p.POSITION_CONTROL,
-                    targetPosition=target_angle,
+                    targetPosition=round(target_angle,1),
                     positionGain=kp,
                     velocityGain=kd
                 )
             else:
-                print(f"Warning: Joint \'{joint_name}\' not found in robot.")
+                logger.warning(f"Warning: Joint \'{joint_name}\' not found in robot.")
 
     def step_simulation(self, time_step=1./240.):
         """
@@ -79,27 +118,18 @@ class PyBulletSimulation:
         p.disconnect()
 
 if __name__ == '__main__':
-    # Example usage:
     sim = PyBulletSimulation(gui=True)
     try:
-        # For demonstration, let\'s try to load a simple KUKA arm or a humanoid from pybullet_data
-        # A full humanoid URDF would be more complex and might need custom loading.
-        # Let\'s use a simple \'humanoid.urdf\' if it exists in pybullet_data, otherwise a KUKA arm.
-        # Note: pybullet_data\'s humanoid.urdf is very basic and might not have all the joints
-        # we mapped in control_module.py. This is for demonstrating the simulation interface.
         try:
             sim.load_robot("humanoid/humanoid.urdf", start_pos=[0, 0, 1.5])
         except p.error:
-            print("humanoid/humanoid.urdf not found or failed to load. Trying kuka_iiwa/model.urdf...")
+            logger.error("humanoid/humanoid.urdf not found or failed to load. Trying kuka_iiwa/model.urdf...")
             sim.load_robot("kuka_iiwa/model.urdf", start_pos=[0, 0, 0.5])
 
-        # Simple loop to apply some joint commands (e.g., for a KUKA arm)
-        # This part would be replaced by actual commands from the control module
         if sim.robotId is not None:
-            # Example commands for a KUKA arm (if loaded)
             if "lbr_iiwa_joint_1" in sim.joint_indices:
                 target_angles = {
-                    "lbr_iiwa_joint_1": 0.5, # radians
+                    "lbr_iiwa_joint_1": 0.5,
                     "lbr_iiwa_joint_2": 0.0,
                     "lbr_iiwa_joint_3": 0.0,
                     "lbr_iiwa_joint_4": -1.0,
@@ -110,19 +140,14 @@ if __name__ == '__main__':
                 print("Applying example KUKA arm joint commands...")
                 sim.set_joint_positions(target_angles)
 
-            # Example commands for a basic humanoid (if loaded and has similar joints)
+
             elif "abdomen" in sim.joint_indices:
-                # These joint names are highly dependent on the specific humanoid URDF.
-                # The control_module.py example used \'left_elbow\', \'left_shoulder_x\', \'left_shoulder_y\'
-                # which are generic. A real humanoid URDF would have specific names like
-                # \'left_shoulder_pitch\', \'left_elbow_roll\', etc.
-                # We\'ll just try to move the abdomen for demonstration.
                 target_angles = {
                     "abdomen": 0.2, # Bend forward slightly
                     "right_hip": 0.5, # Lift right leg slightly
                     "left_hip": -0.5 # Lower left leg slightly
                 }
-                print("Applying example humanoid joint commands...")
+                logger.info("Applying example humanoid joint commands...")
                 sim.set_joint_positions(target_angles)
 
             for i in range(240 * 5): # Run for 5 seconds
@@ -130,7 +155,7 @@ if __name__ == '__main__':
                 time.sleep(1./240.) # Maintain real-time speed if possible
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.error(f"An error occurred: {e}")
     finally:
         sim.disconnect()
 
@@ -144,7 +169,7 @@ if __name__ == '__main__':
             dict: Dictionary of joint names and their states (position, velocity, reaction forces, applied torque).
         """
         if self.robotId is None:
-            print("Error: No robot loaded.")
+            logger.error("Error: No robot loaded.")
             return {}
 
         joint_states = {}
@@ -153,24 +178,3 @@ if __name__ == '__main__':
             # joint_state is a tuple: (position, velocity, reaction_forces, applied_torque)
             joint_states[joint_name] = joint_state
         return joint_states
-
-
-
-    def get_joint_states(self):
-        """
-        Gets the current joint states (position, velocity, etc.) of the loaded robot.
-
-        Returns:
-            dict: Dictionary of joint names and their states (position, velocity, reaction forces, applied torque).
-        """
-        if self.robotId is None:
-            print("Error: No robot loaded.")
-            return {}
-
-        joint_states = {}
-        for joint_name, joint_index in self.joint_indices.items():
-            joint_state = p.getJointState(self.robotId, joint_index)
-            # joint_state is a tuple: (position, velocity, reaction_forces, applied_torque)
-            joint_states[joint_name] = joint_state
-        return joint_states
-

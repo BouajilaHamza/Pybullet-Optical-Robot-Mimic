@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 JOINT_LIMITS = {
     'left_shoulder_x': (-np.pi/2, np.pi/2), # Corresponds to KUKA J3 (Shoulder Roll)
     'left_shoulder_y': (-np.pi/2, np.pi/2), # Corresponds to KUKA J2 (Shoulder Pitch)
-    'left_elbow': (0, np.pi),               # Corresponds to KUKA J4 (Elbow Flexion)
+    'left_elbow': (-2.6, 0.0),               # **UPDATED**: Corresponds to KUKA J4 (Elbow Flexion)
+                                            # Assuming KUKA J4: -2.6 rad = straight/open, 0.0 rad = bent/closed
     "left_shoulder_z": (-np.pi/2, np.pi/2), # Corresponds to KUKA J1 (Shoulder Yaw)
     "left_forearm_twist": (-np.pi/2, np.pi/2), # Corresponds to KUKA J5 (Forearm Twist)
     "left_wrist_pitch": (-np.pi/2, np.pi/2),   # Corresponds to KUKA J6 (Wrist Pitch)
@@ -92,7 +93,7 @@ class JointTrajectoryGenerator:
         p_wr = np.array([lw.x, lw.y, lw.z])
 
         # --- Step 1: Normalize all points relative to the shoulder ---
-        # This makes the human's shoulder the origin (0,0,0) for subsequent calculations,
+        # This makes the human's shoulder the origin (0,0,0) for all subsequent calculations,
         # mimicking the KUKA iiwa's fixed base.
         p_el_norm = p_el - p_sh # Elbow position relative to shoulder
         p_wr_norm = p_wr - p_sh # Wrist position relative to shoulder
@@ -113,12 +114,27 @@ class JointTrajectoryGenerator:
 
         # --- Step 2: Calculate KUKA iiwa Joint Angles ---
 
-        # 1. KUKA Joint 4 (Elbow Flexion)
+        # 1. KUKA Joint 4 (Elbow Flexion) - `lbr_iiwa_joint_4`
         # This is the angle at the elbow, formed by the upper arm and forearm segments.
         # Vertex: p_el_norm (elbow)
         # Points: np.zeros(3) (shoulder, which is now the origin) and p_wr_norm (wrist)
-        elbow_angle = self._calculate_angle_3d(np.zeros(3), p_el_norm, p_wr_norm)
-        joint_commands['left_elbow'] = np.clip(elbow_angle, *JOINT_LIMITS['left_elbow'])
+        # The angle calculated here: 0 rad = bent, pi rad = straight.
+        elbow_angle_human = self._calculate_angle_3d(np.zeros(3), p_el_norm, p_wr_norm)
+
+        # Map human elbow angle (0=bent, pi=straight) to KUKA J4 range (-2.6=straight, 0=bent)
+        # This inverts the motion as per user's request:
+        # When human_angle is 0 (bent), KUKA J4 should be -2.6 (straight/open).
+        # When human_angle is pi (straight), KUKA J4 should be 0 (bent/closed).
+        kuka_j4_straight_val = -2.6 # KUKA J4 value for a straight arm
+        kuka_j4_bent_val = 0.0      # KUKA J4 value for a bent arm
+
+        # Linear mapping formula: output = C + (input - A) * (D - C) / (B - A)
+        # input = elbow_angle_human, A = 0, B = np.pi
+        # C = kuka_j4_straight_val, D = kuka_j4_bent_val
+        kuka_j4_value = kuka_j4_straight_val + (elbow_angle_human - 0) * \
+                        (kuka_j4_bent_val - kuka_j4_straight_val) / (np.pi - 0)
+        
+        joint_commands['left_elbow'] = np.clip(kuka_j4_value, *JOINT_LIMITS['left_elbow'])
 
         # Coordinate system transformation from MediaPipe to KUKA base frame
         # MediaPipe's default camera frame: X-right, Y-down, Z-into screen
@@ -130,6 +146,7 @@ class JointTrajectoryGenerator:
         
         n_upper_arm_kuka = np.array([-n_upper_arm[2], n_upper_arm[0], -n_upper_arm[1]])
         n_forearm_kuka = np.array([-n_forearm[2], n_forearm[0], -n_forearm[1]])
+
 
         # 2. KUKA Joint 1 (Shoulder Yaw) - `lbr_iiwa_joint_1`
         # Rotation around the Z-axis of the KUKA base.
@@ -309,4 +326,3 @@ if __name__ == '__main__':
     logger.info("            sim.set_joint_positions(robot_commands)")
     logger.info("            sim.step_simulation()")
     logger.info("            # ... add time.sleep if needed ...")
-

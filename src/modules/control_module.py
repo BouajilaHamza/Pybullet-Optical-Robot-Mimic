@@ -158,7 +158,8 @@ class JointTrajectoryGenerator:
         # 3. KUKA Joint 2 (Shoulder Pitch) - `lbr_iiwa_joint_2`
         # Rotation around the Y-axis of the KUKA base (after J1 rotation).
         # This is the angle of the upper arm vector with the horizontal (XY) plane.
-        shoulder_pitch = np.arctan2(n_upper_arm_kuka[2], np.sqrt(n_upper_arm_kuka[0]**2 + n_upper_arm_kuka[1]**2))
+        # **UPDATED**: Negate the value to invert the motion as requested.
+        shoulder_pitch = -np.arctan2(n_upper_arm_kuka[2], np.sqrt(n_upper_arm_kuka[0]**2 + n_upper_arm_kuka[1]**2))
         joint_commands['left_shoulder_y'] = np.clip(shoulder_pitch, *JOINT_LIMITS['left_shoulder_y'])
 
         # 4. KUKA Joint 3 (Shoulder Roll) - `lbr_iiwa_joint_3`
